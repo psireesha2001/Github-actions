@@ -28,7 +28,6 @@ jobs:
           # information.
           credentials: ${{ secrets.UPTYCS_CREDENTIALS }}
           output-format: json
-          output-name: github-image-scan
           
       - name: Read Scan Output Summary
         id: read-scan-output
