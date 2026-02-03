@@ -1,0 +1,61 @@
+name: Build and Scan Multiple Images
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Build all images
+        id: build
+        run: |
+          images=()
+          for dockerfile in dockerfile*; do
+            image_name="myapp-${dockerfile#Dockerfile}"
+            image_name="${image_name#-}"
+            docker build -f "$dockerfile" -t "${image_name}:latest" .
+            images+=("${image_name}:latest")
+          done
+          
+          IFS=','
+          echo "IMAGES_TO_SCAN=${images[*]}" >> $GITHUB_ENV
+      
+      - name: Scan all images
+        uses: uptycslabs/uptycs-action@main
+        with:
+          image: ${{ env.IMAGES_TO_SCAN }}
+          credentials: ${{ secrets.UPTYCS_CREDENTIALS }}
+          output-format: json
+          
+      - name: Read Scan Output Summary
+        id: read-scan-output
+        shell: bash
+        run: |
+          OUTPUT_FILE="github-image-scan_vulnerabilities.json"
+          ls -al
+          if [[ -f "$OUTPUT_FILE" ]]; then
+            echo "Found scan summary file: $OUTPUT_FILE"
+
+            # Wrap contents in Markdown JSON code block
+            {
+              echo '```json'
+              cat "$OUTPUT_FILE"
+              echo '```'
+            } > formatted_summary.txt
+
+            SCAN_SUMMARY=$(cat formatted_summary.txt)
+          else
+            echo "Scan summary file not found: $OUTPUT_FILE"
+            SCAN_SUMMARY="No scan summary available."
+          fi
+
+          # Export to GitHub environment for later steps
+          echo "summary_content<<EOF" >> "$GITHUB_ENV"
+          echo "$SCAN_SUMMARY" >> "$GITHUB_ENV"
+          echo "EOF" >> "$GITHUB_ENV"
